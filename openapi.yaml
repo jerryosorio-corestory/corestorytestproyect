@@ -1,0 +1,774 @@
+openapi: "3.0.3"
+info:
+  title: Library Management System API
+  version: "1.0.0"
+  description: |
+    REST API for managing a public library's catalogue, members, and book loans.
+
+    ## Features
+    - Book catalogue management (CRUD + search)
+    - Member registration and profile management
+    - Loan lifecycle: checkout, return, overdue tracking, late-fee preview
+
+    ## Business Rules
+    - A member must be **ACTIVE** to borrow books.
+    - A member may hold at most **3 concurrent loans**.
+    - A book must be **available** (not currently on loan) to be checked out.
+    - Loans have a **14-day** borrowing period.
+    - Late fees accrue at **$0.50/day**, capped at **$10.00** per loan.
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: Books
+    description: Book catalogue operations
+  - name: Members
+    description: Library member management
+  - name: Loans
+    description: Book checkout and return operations
+
+paths:
+
+  # ── Books ────────────────────────────────────────────────────────────────────
+
+  /api/books:
+    get:
+      tags: [Books]
+      summary: List all books
+      description: Returns every book in the catalogue, ordered by title.
+      operationId: listBooks
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  books:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Book"
+                  total:
+                    type: integer
+              example:
+                books:
+                  - id: 1
+                    title: "Clean Code"
+                    author: "Robert C. Martin"
+                    isbn: "9780132350884"
+                    genre: "Technology"
+                    published_year: 2008
+                    is_available: true
+                    created_at: "2024-01-15T10:00:00"
+                total: 1
+
+    post:
+      tags: [Books]
+      summary: Add a new book
+      description: Add a book to the catalogue. ISBN must be unique.
+      operationId: createBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookCreate"
+            example:
+              title: "Clean Code"
+              author: "Robert C. Martin"
+              isbn: "9780132350884"
+              genre: "Technology"
+              published_year: 2008
+      responses:
+        "201":
+          description: Book created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/books/search:
+    get:
+      tags: [Books]
+      summary: Search books
+      description: |
+        Case-insensitive partial-match search across title, author, and ISBN.
+      operationId: searchBooks
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search term
+          schema:
+            type: string
+          example: "martin"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  books:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Book"
+                  total:
+                    type: integer
+                  query:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/books/{book_id}:
+    parameters:
+      - $ref: "#/components/parameters/BookId"
+
+    get:
+      tags: [Books]
+      summary: Get a book
+      operationId: getBook
+      responses:
+        "200":
+          description: Book found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags: [Books]
+      summary: Update a book
+      description: Update one or more fields of an existing book. ISBN cannot be changed.
+      operationId: updateBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookUpdate"
+      responses:
+        "200":
+          description: Book updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      tags: [Books]
+      summary: Delete a book
+      description: |
+        Remove a book from the catalogue.
+        Returns **409 Conflict** if the book is currently on loan.
+      operationId: deleteBook
+      responses:
+        "200":
+          description: Book deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: "Book 1 deleted successfully"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conflict — book is currently on loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Members ──────────────────────────────────────────────────────────────────
+
+  /api/members:
+    get:
+      tags: [Members]
+      summary: List all members
+      description: Returns all registered members, ordered by last name.
+      operationId: listMembers
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Member"
+                  total:
+                    type: integer
+
+    post:
+      tags: [Members]
+      summary: Register a new member
+      description: Register a new library member. Email must be unique.
+      operationId: registerMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberCreate"
+            example:
+              first_name: "Jane"
+              last_name: "Doe"
+              email: "jane.doe@example.com"
+              phone: "+1-555-0100"
+      responses:
+        "201":
+          description: Member registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/members/{member_id}:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+
+    get:
+      tags: [Members]
+      summary: Get a member
+      operationId: getMember
+      responses:
+        "200":
+          description: Member profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags: [Members]
+      summary: Update member information
+      description: Update personal details. All fields are optional.
+      operationId: updateMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdate"
+      responses:
+        "200":
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/members/{member_id}/pay:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+    post:
+      tags: [Members]
+      summary: Record a fee payment
+      description: |
+        Apply a payment to the member's outstanding late-fee balance.
+        The amount must be positive and cannot exceed the current outstanding balance.
+      operationId: payFees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  format: float
+                  minimum: 0.01
+                  description: Payment amount in USD
+            example:
+              amount: 5.50
+      responses:
+        "200":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  member:
+                    $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/members/{member_id}/loans:
+    parameters:
+      - $ref: "#/components/parameters/MemberId"
+    get:
+      tags: [Members]
+      summary: List member's loan history
+      description: Returns all loan records for a specific member (active and returned).
+      operationId: getMemberLoans
+      responses:
+        "200":
+          description: Loan history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loans:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Loan"
+                  total:
+                    type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Loans ─────────────────────────────────────────────────────────────────────
+
+  /api/loans:
+    get:
+      tags: [Loans]
+      summary: List all loans
+      description: Returns all loan records, most recent first.
+      operationId: listLoans
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loans:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Loan"
+                  total:
+                    type: integer
+
+    post:
+      tags: [Loans]
+      summary: Check out a book
+      description: |
+        Borrow a book for a member, creating a new loan record.
+
+        **Business rules enforced:**
+        - Member status must be `active`
+        - Member must have fewer than 3 open loans
+        - Book must be available (not currently on loan)
+
+        On success, the book's `is_available` flag is set to `false` and the due
+        date is set to 14 days from today.
+      operationId: checkoutBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [member_id, book_id]
+              properties:
+                member_id:
+                  type: integer
+                  description: ID of the borrowing member
+                book_id:
+                  type: integer
+                  description: ID of the book to borrow
+            example:
+              member_id: 1
+              book_id: 3
+      responses:
+        "201":
+          description: Loan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Loan"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/loans/overdue:
+    get:
+      tags: [Loans]
+      summary: List overdue loans
+      description: |
+        Returns all open loans where the due date has passed, ordered by due date
+        ascending (oldest overdue first).
+      operationId: listOverdueLoans
+      responses:
+        "200":
+          description: Overdue loans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  overdue_loans:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Loan"
+                  total:
+                    type: integer
+
+  /api/loans/{loan_id}:
+    parameters:
+      - $ref: "#/components/parameters/LoanId"
+    get:
+      tags: [Loans]
+      summary: Get a loan record
+      operationId: getLoan
+      responses:
+        "200":
+          description: Loan record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Loan"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/loans/{loan_id}/return:
+    parameters:
+      - $ref: "#/components/parameters/LoanId"
+    post:
+      tags: [Loans]
+      summary: Return a book
+      description: |
+        Close an open loan by recording the book's return.
+
+        - Sets `returned = true` and records today as `return_date`.
+        - Marks the book as available again.
+        - Calculates and charges a late fee if the return is past the due date
+          ($0.50/day, capped at $10.00). The fee is added to the member's
+          `outstanding_fees` balance.
+      operationId: returnBook
+      responses:
+        "200":
+          description: Book returned
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Loan"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Book returned on time. No fee charged."
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/loans/{loan_id}/fee:
+    parameters:
+      - $ref: "#/components/parameters/LoanId"
+    get:
+      tags: [Loans]
+      summary: Preview late fee
+      description: |
+        Calculate the late fee that would be charged if the book were returned now.
+        Read-only — does not modify any data.
+      operationId: previewFee
+      responses:
+        "200":
+          description: Fee preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loan_id:
+                    type: integer
+                  days_overdue:
+                    type: integer
+                  potential_fee:
+                    type: number
+                    format: float
+                  fee_capped:
+                    type: boolean
+              example:
+                loan_id: 7
+                days_overdue: 5
+                potential_fee: 2.50
+                fee_capped: false
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+# ── Reusable components ───────────────────────────────────────────────────────
+
+components:
+
+  parameters:
+    BookId:
+      name: book_id
+      in: path
+      required: true
+      description: Integer primary key of the book
+      schema:
+        type: integer
+        example: 1
+
+    MemberId:
+      name: member_id
+      in: path
+      required: true
+      description: Integer primary key of the member
+      schema:
+        type: integer
+        example: 1
+
+    LoanId:
+      name: loan_id
+      in: path
+      required: true
+      description: Integer primary key of the loan
+      schema:
+        type: integer
+        example: 1
+
+  schemas:
+
+    Book:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+        author:
+          type: string
+        isbn:
+          type: string
+          description: ISBN-10 or ISBN-13
+        genre:
+          type: string
+          nullable: true
+        published_year:
+          type: integer
+          nullable: true
+        is_available:
+          type: boolean
+          description: False when the book is currently on loan
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+
+    BookCreate:
+      type: object
+      required: [title, author, isbn]
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        isbn:
+          type: string
+        genre:
+          type: string
+          nullable: true
+        published_year:
+          type: integer
+          nullable: true
+
+    BookUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        genre:
+          type: string
+          nullable: true
+        published_year:
+          type: integer
+          nullable: true
+
+    Member:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        first_name:
+          type: string
+        last_name:
+          type: string
+        full_name:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, suspended, expired]
+        outstanding_fees:
+          type: number
+          format: float
+          description: Unpaid late-fee balance in USD
+        active_loans_count:
+          type: integer
+          description: Number of currently open loans (max 3)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+
+    MemberCreate:
+      type: object
+      required: [first_name, last_name, email]
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+
+    MemberUpdate:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+
+    Loan:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        member_id:
+          type: integer
+        member_name:
+          type: string
+          readOnly: true
+          nullable: true
+        book_id:
+          type: integer
+        book_title:
+          type: string
+          readOnly: true
+          nullable: true
+        checkout_date:
+          type: string
+          format: date-time
+          readOnly: true
+        due_date:
+          type: string
+          format: date-time
+          readOnly: true
+        returned:
+          type: boolean
+        return_date:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        late_fee:
+          type: number
+          format: float
+          description: Charged late fee in USD (0.00 if returned on time)
+        is_overdue:
+          type: boolean
+          readOnly: true
+        days_overdue:
+          type: integer
+          readOnly: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request — missing or malformed input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Field 'title' is required"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Book with id 99 not found"
+
+    UnprocessableEntity:
+      description: Validation or business rule failure
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Member has reached the maximum of 3 concurrent loans"
