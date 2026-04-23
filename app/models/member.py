@@ -5,7 +5,7 @@ Members must be in ACTIVE status to borrow books.
 A SUSPENDED member has unpaid fees or policy violations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -40,8 +40,8 @@ class Member(db.Model):
     outstanding_fees = db.Column(db.Float, default=0.0, nullable=False)
 
     # Audit timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # A member can have many loans over time
     loans = db.relationship("Loan", back_populates="member", lazy="dynamic")
