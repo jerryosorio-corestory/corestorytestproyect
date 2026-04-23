@@ -103,6 +103,26 @@ def test_checkout_missing_fields(client):
     assert response.status_code == 400
 
 
+def test_checkout_nonexistent_member(client):
+    """POST /api/loans with an unknown member_id returns 404."""
+    _, book_id = setup_member_and_book(client)
+    response = checkout(client, 9999, book_id)
+    assert response.status_code == 404
+
+
+def test_checkout_nonexistent_book(client):
+    """POST /api/loans with an unknown book_id returns 404."""
+    member_id, _ = setup_member_and_book(client)
+    response = checkout(client, member_id, 9999)
+    assert response.status_code == 404
+
+
+def test_checkout_invalid_ids(client):
+    """POST /api/loans with non-integer IDs returns 400."""
+    response = client.post("/api/loans", json={"member_id": "abc", "book_id": "xyz"})
+    assert response.status_code == 400
+
+
 # ---------------------------------------------------------------------------
 # Return
 # ---------------------------------------------------------------------------

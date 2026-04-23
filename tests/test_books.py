@@ -152,3 +152,38 @@ def test_delete_book(client):
 
     # Verify it is gone
     assert client.get(f"/api/books/{book_id}").status_code == 404
+
+
+def test_delete_book_not_found(client):
+    """DELETE /api/books/999 returns 404."""
+    response = client.delete("/api/books/999")
+    assert response.status_code == 404
+
+
+def test_delete_book_on_loan(client):
+    """DELETE /api/books/<id> returns 409 when the book is currently checked out."""
+    from tests.test_loans import MEMBER_PAYLOAD, BOOK_PAYLOAD
+
+    member_id = client.post("/api/members", json=MEMBER_PAYLOAD).get_json()["id"]
+    book_id = post_book(client, BOOK_PAYLOAD).get_json()["id"]
+    client.post("/api/loans", json={"member_id": member_id, "book_id": book_id})
+
+    response = client.delete(f"/api/books/{book_id}")
+    assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Additional create / update edge cases
+# ---------------------------------------------------------------------------
+
+def test_create_book_non_integer_year(client):
+    """POST /api/books with a string published_year returns 422."""
+    payload = {**VALID_BOOK, "isbn": "9780132350885", "published_year": "not-a-year"}
+    response = post_book(client, payload)
+    assert response.status_code == 422
+
+
+def test_update_book_not_found(client):
+    """PUT /api/books/999 returns 404."""
+    response = client.put("/api/books/999", json={"genre": "Mystery"})
+    assert response.status_code == 404

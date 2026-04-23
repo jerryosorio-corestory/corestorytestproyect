@@ -80,9 +80,15 @@ def checkout():
         if not data.get(field):
             return jsonify({"error": f"Field '{field}' is required"}), 400
 
+    try:
+        member_id = int(data["member_id"])
+        book_id = int(data["book_id"])
+    except (ValueError, TypeError):
+        return jsonify({"error": "'member_id' and 'book_id' must be integers"}), 400
+
     loan, error = LoanService.checkout(
-        member_id=int(data["member_id"]),
-        book_id=int(data["book_id"]),
+        member_id=member_id,
+        book_id=book_id,
     )
     if error:
         status = 404 if "not found" in error else 422

@@ -75,8 +75,13 @@ class BookService:
 
         # Validate published year if provided
         year = data.get("published_year")
-        if year is not None and not validate_year(int(year)):
-            return None, f"Published year {year} is out of the valid range (1450 – present)"
+        if year is not None:
+            try:
+                year = int(year)
+            except (ValueError, TypeError):
+                return None, f"Published year must be an integer, got: '{year}'"
+            if not validate_year(year):
+                return None, f"Published year {year} is out of the valid range (1450 – present)"
 
         book = Book(
             title=data["title"],
