@@ -87,7 +87,8 @@ def test_checkout_suspended_member(client):
 
     # Suspend the member directly via the database
     with client.application.app_context():
-        member = Member.query.get(member_id)
+        from app import db as _db
+        member = _db.session.get(Member, member_id)
         member.status = MemberStatus.SUSPENDED
         db.session.commit()
 

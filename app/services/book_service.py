@@ -28,7 +28,7 @@ class BookService:
 
         Returns None if no book with that ID exists (callers handle the 404).
         """
-        return Book.query.get(book_id)
+        return db.session.get(Book, book_id)
 
     @classmethod
     def search(cls, query: str) -> List[Book]:

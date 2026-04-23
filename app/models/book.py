@@ -4,7 +4,7 @@ Book model — represents a physical book in the library catalogue.
 Each book tracks its own availability so the system never double-lends it.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -27,8 +27,8 @@ class Book(db.Model):
     is_available = db.Column(db.Boolean, default=True, nullable=False)
 
     # Audit timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # One book can have many loan records over its lifetime
     loans = db.relationship("Loan", back_populates="book", lazy="dynamic")

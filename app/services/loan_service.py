@@ -8,7 +8,7 @@ This service enforces all library policies:
   - Late fees are calculated when a book is returned past its due date
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from flask import current_app
 from app import db
@@ -29,12 +29,12 @@ class LoanService:
     @classmethod
     def get_by_id(cls, loan_id: int) -> Optional[Loan]:
         """Fetch a single loan by primary key; returns None if not found."""
-        return Loan.query.get(loan_id)
+        return db.session.get(Loan, loan_id)
 
     @classmethod
     def get_overdue(cls) -> List[Loan]:
         """Return all loans that are past their due date and not yet returned."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         return (
             Loan.query.filter(
                 Loan.returned == False,
@@ -71,7 +71,7 @@ class LoanService:
             Tuple of (Loan, error_message).  error_message is None on success.
         """
         # --- Rule 1: Validate member ---
-        member = Member.query.get(member_id)
+        member = db.session.get(Member, member_id)
         if not member:
             return None, f"Member with id {member_id} not found"
 
@@ -90,7 +90,7 @@ class LoanService:
             )
 
         # --- Rule 3: Validate book availability ---
-        book = Book.query.get(book_id)
+        book = db.session.get(Book, book_id)
         if not book:
             return None, f"Book with id {book_id} not found"
 
@@ -102,8 +102,8 @@ class LoanService:
         loan = Loan(
             member_id=member_id,
             book_id=book_id,
-            checkout_date=datetime.utcnow(),
-            due_date=datetime.utcnow() + timedelta(days=loan_period),
+            checkout_date=datetime.now(timezone.utc).replace(tzinfo=None),
+            due_date=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=loan_period),
         )
 
         # Mark the book as unavailable
@@ -136,7 +136,7 @@ class LoanService:
             return None, f"Loan {loan_id} has already been closed (book was previously returned)"
 
         # Record return timestamp
-        loan.return_date = datetime.utcnow()
+        loan.return_date = datetime.now(timezone.utc).replace(tzinfo=None)
         loan.returned = True
 
         # --- Late fee calculation ---

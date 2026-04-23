@@ -6,7 +6,7 @@ and makes it easy to unit-test validation rules in isolation.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def validate_isbn(isbn: str) -> bool:
@@ -74,5 +74,5 @@ def validate_year(year: int) -> bool:
     if not isinstance(year, int):
         return False
 
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
     return 1450 <= year <= current_year
