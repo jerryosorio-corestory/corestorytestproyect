@@ -24,8 +24,18 @@ def list_members():
     """
     GET /api/members
     Returns all registered members ordered by last name.
+
+    Query params:
+      status (optional) — filter by membership status: active | suspended | expired
     """
-    members = MemberService.get_all()
+    status_filter = request.args.get("status")
+    if status_filter:
+        from app.models.member import MemberStatus
+        if status_filter not in MemberStatus.ALL:
+            return jsonify({"error": f"Invalid status '{status_filter}'. Must be one of: {MemberStatus.ALL}"}), 400
+        members = MemberService.get_by_status(status_filter)
+    else:
+        members = MemberService.get_all()
     result = [_member_to_dict(m) for m in members]
     return jsonify({"members": result, "total": len(result)}), 200
 

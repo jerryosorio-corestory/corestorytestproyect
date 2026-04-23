@@ -99,3 +99,108 @@ def test_pay_fees_missing_amount(client):
     member_id = post_member(client).get_json()["id"]
     response = client.post(f"/api/members/{member_id}/pay", json={})
     assert response.status_code == 400
+
+
+def test_pay_fees_negative_amount(client):
+    """POST /api/members/<id>/pay with a negative amount returns 422."""
+    member_id = post_member(client).get_json()["id"]
+    response = client.post(f"/api/members/{member_id}/pay", json={"amount": -5.0})
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Auto-suspension and reinstatement
+# ---------------------------------------------------------------------------
+
+def test_auto_suspension_on_fee_threshold(client):
+    """Member is suspended when outstanding fees reach the $5.00 threshold."""
+    from app.services.member_service import MemberService
+
+    member_id = post_member(client).get_json()["id"]
+
+    # Apply a fee large enough to trigger automatic suspension
+    with client.application.app_context():
+        MemberService.apply_late_fee(member_id, 5.00)
+
+    response = client.get(f"/api/members/{member_id}")
+    data = response.get_json()
+    assert data["status"] == "suspended"
+    assert data["outstanding_fees"] == 5.00
+
+
+def test_auto_reinstatement_on_full_payment(client):
+    """Paying off all outstanding fees reactivates a suspended member."""
+    from app.services.member_service import MemberService
+
+    member_id = post_member(client).get_json()["id"]
+
+    with client.application.app_context():
+        MemberService.apply_late_fee(member_id, 5.00)
+
+    client.post(f"/api/members/{member_id}/pay", json={"amount": 5.00})
+
+    response = client.get(f"/api/members/{member_id}")
+    data = response.get_json()
+    assert data["status"] == "active"
+    assert data["outstanding_fees"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# List members
+# ---------------------------------------------------------------------------
+
+def test_list_members_returns_all(client):
+    """GET /api/members returns every registered member."""
+    post_member(client)
+    post_member(client, {**VALID_MEMBER, "email": "bob@example.com", "first_name": "Bob"})
+    response = client.get("/api/members")
+    assert response.status_code == 200
+    assert response.get_json()["total"] == 2
+
+
+def test_list_members_filter_by_status(client):
+    """GET /api/members?status=suspended returns only suspended members."""
+    from app.services.member_service import MemberService
+
+    member_id = post_member(client).get_json()["id"]
+    post_member(client, {**VALID_MEMBER, "email": "bob@example.com", "first_name": "Bob"})
+
+    with client.application.app_context():
+        MemberService.apply_late_fee(member_id, 5.00)
+
+    response = client.get("/api/members?status=suspended")
+    data = response.get_json()
+    assert data["total"] == 1
+    assert data["members"][0]["id"] == member_id
+
+
+def test_list_members_filter_invalid_status(client):
+    """GET /api/members?status=unknown returns 400."""
+    response = client.get("/api/members?status=unknown")
+    assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Update member
+# ---------------------------------------------------------------------------
+
+def test_update_member_name(client):
+    """PUT /api/members/<id> updates first and last name."""
+    member_id = post_member(client).get_json()["id"]
+    response = client.put(f"/api/members/{member_id}", json={"first_name": "Alicia"})
+    assert response.status_code == 200
+    assert response.get_json()["first_name"] == "Alicia"
+
+
+def test_update_member_email_to_existing_raises_422(client):
+    """PUT /api/members/<id> cannot change email to one already used."""
+    post_member(client, {**VALID_MEMBER, "email": "bob@example.com", "first_name": "Bob"})
+    alice_id = post_member(client).get_json()["id"]
+    response = client.put(f"/api/members/{alice_id}", json={"email": "bob@example.com"})
+    assert response.status_code == 422
+
+
+def test_update_member_not_found(client):
+    """PUT /api/members/999 returns 404."""
+    response = client.put("/api/members/999", json={"first_name": "Ghost"})
+    assert response.status_code == 404

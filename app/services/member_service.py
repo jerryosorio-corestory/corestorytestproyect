@@ -28,7 +28,17 @@ class MemberService:
     @classmethod
     def get_by_id(cls, member_id: int) -> Optional[Member]:
         """Fetch a single member by primary key; returns None if not found."""
-        return Member.query.get(member_id)
+        return db.session.get(Member, member_id)
+
+    @classmethod
+    def get_by_status(cls, status: str) -> List[Member]:
+        """Return all members with the given status, ordered by last name."""
+        return (
+            Member.query
+            .filter_by(status=status)
+            .order_by(Member.last_name, Member.first_name)
+            .all()
+        )
 
     @classmethod
     def get_by_email(cls, email: str) -> Optional[Member]:
