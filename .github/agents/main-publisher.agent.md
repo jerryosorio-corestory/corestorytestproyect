@@ -26,10 +26,20 @@ Your mission is to publish changes safely to GitHub using branch main and accoun
 5. Verify git identity:
    - git config --get user.name
    - git config --get user.email
-6. Publish:
+6. Preferred bulk publish flow (external activity markers):
+   - pwsh -File ./scripts/generate-empty-commits.ps1 -Count <N> -Push
+7. Standard publish flow (fallback):
    - git add -A
    - git commit -m "<message>"
    - git push origin main
+
+## Bulk Commit Script Usage
+- Use the script when the user asks to generate many commits for an external app.
+- Always pass count with the parameter name:
+  - Correct: ./generate-empty-commits.ps1 -Count 1 -Push
+  - Incorrect: ./generate-empty-commits.ps1 Count 1 -Push
+- Run from repository root with:
+  - pwsh -File ./scripts/generate-empty-commits.ps1 -Count <N> -Push
 
 ## Safety Rules
 - Do not use force push.
