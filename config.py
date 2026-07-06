@@ -17,7 +17,9 @@ class Config:
 
     # Business rules — centralised so they can be changed in one place
     MAX_LOANS_PER_MEMBER = 3          # Maximum books a member can borrow at once
-    LOAN_PERIOD_DAYS = 14             # Standard loan period in days
+    LOAN_PERIOD_DAYS = 14            # Standard loan period in days
+    RENEWAL_PERIOD_DAYS = 7          # Extension granted by a loan renewal
+    MAX_RENEWALS_PER_LOAN = 1        # Each open loan may be renewed once
     LATE_FEE_PER_DAY = 0.50          # Late fee charged per overdue day (USD)
     MAX_LATE_FEE = 10.00             # Cap on total late fee per loan (USD)
 

@@ -8,13 +8,14 @@ info:
     ## Features
     - Book catalogue management (CRUD + search)
     - Member registration and profile management
-    - Loan lifecycle: checkout, return, overdue tracking, late-fee preview
+    - Loan lifecycle: checkout, renewal, return, overdue tracking, late-fee preview
 
     ## Business Rules
     - A member must be **ACTIVE** to borrow books.
     - A member may hold at most **3 concurrent loans**.
     - A book must be **available** (not currently on loan) to be checked out.
     - Loans have a **14-day** borrowing period.
+    - An open loan may be **renewed once for 7 more days** before it becomes overdue.
     - Late fees accrue at **$0.50/day**, capped at **$10.00** per loan.
 
 servers:
@@ -27,7 +28,7 @@ tags:
   - name: Members
     description: Library member management
   - name: Loans
-    description: Book checkout and return operations
+    description: Book checkout, renewal, return, and overdue operations
 
 paths:
 
@@ -343,7 +344,9 @@ paths:
     get:
       tags: [Members]
       summary: List member's loan history
-      description: Returns all loan records for a specific member (active and returned).
+      description: |
+        Returns all loan records for a specific member (active and returned),
+        including renewal metadata used by the circulation desk.
       operationId: getMemberLoans
       responses:
         "200":
@@ -503,6 +506,40 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /api/loans/{loan_id}/renew:
+    parameters:
+      - $ref: "#/components/parameters/LoanId"
+    post:
+      tags: [Loans]
+      summary: Renew a loan
+      description: |
+        Extend the due date of an open loan by 7 days.
+
+        **Business rules enforced:**
+        - The loan must still be open
+        - The loan must not already be overdue
+        - The loan may only be renewed once
+
+        Successful renewals increment `renewal_count` and stamp `last_renewed_at`.
+      operationId: renewLoan
+      responses:
+        "200":
+          description: Loan renewed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Loan"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Loan renewed successfully."
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /api/loans/{loan_id}/fee:
     parameters:
       - $ref: "#/components/parameters/LoanId"
@@ -521,20 +558,21 @@ paths:
               schema:
                 type: object
                 properties:
-                  loan_id:
-                    type: integer
+                  is_overdue:
+                    type: boolean
                   days_overdue:
                     type: integer
+                  fee_per_day:
+                    type: number
+                    format: float
                   potential_fee:
                     type: number
                     format: float
-                  fee_capped:
-                    type: boolean
               example:
-                loan_id: 7
+                is_overdue: true
                 days_overdue: 5
+                fee_per_day: 0.50
                 potential_fee: 2.50
-                fee_capped: false
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -720,6 +758,16 @@ components:
         due_date:
           type: string
           format: date-time
+          readOnly: true
+          description: Current due date, including any approved renewal extension
+        renewal_count:
+          type: integer
+          readOnly: true
+          description: Number of times this loan has been renewed (max 1)
+        last_renewed_at:
+          type: string
+          format: date-time
+          nullable: true
           readOnly: true
         returned:
           type: boolean

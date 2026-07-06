@@ -1,13 +1,14 @@
 """
 Loan API endpoints — mounted at /api/loans
 
-Manages book checkout, return, and overdue tracking.
+Manages book checkout, renewal, return, and overdue tracking.
 
 Endpoints:
   GET    /api/loans              — list all loan records
   POST   /api/loans              — check out a book (create a new loan)
   GET    /api/loans/overdue      — list all overdue loans
   GET    /api/loans/<id>         — get a single loan record
+  POST   /api/loans/<id>/renew   — extend an eligible loan
   POST   /api/loans/<id>/return  — return a book (close the loan)
   GET    /api/loans/<id>/fee     — preview the current late fee for a loan
 """
@@ -125,6 +126,28 @@ def return_book(loan_id: int):
     return jsonify(response), 200
 
 
+@loans_bp.route("/<int:loan_id>/renew", methods=["POST"])
+def renew_loan(loan_id: int):
+    """
+    POST /api/loans/<loan_id>/renew
+    Extend an open loan before it becomes overdue.
+
+    Business rules enforced by LoanService:
+      - Loan must exist
+      - Loan must still be open
+      - Loan must not be overdue
+      - Loan may only be renewed once
+    """
+    loan, error = LoanService.renew(loan_id)
+    if error:
+        status = 404 if "not found" in error else 422
+        return jsonify({"error": error}), status
+
+    response = _loan_to_dict(loan)
+    response["message"] = "Loan renewed successfully."
+    return jsonify(response), 200
+
+
 @loans_bp.route("/<int:loan_id>/fee", methods=["GET"])
 def preview_fee(loan_id: int):
     """
@@ -148,6 +171,8 @@ def _loan_to_dict(loan) -> dict:
         "book_title": loan.book.title if loan.book else None,
         "checkout_date": loan.checkout_date.isoformat(),
         "due_date": loan.due_date.isoformat(),
+        "renewal_count": loan.renewal_count,
+        "last_renewed_at": loan.last_renewed_at.isoformat() if loan.last_renewed_at else None,
         "returned": loan.returned,
         "return_date": loan.return_date.isoformat() if loan.return_date else None,
         "late_fee": round(loan.late_fee, 2),

@@ -5,6 +5,7 @@ This service enforces all library policies:
   - Member must be ACTIVE to borrow
   - Member must not exceed the concurrent loan limit
   - Book must be available (not already checked out)
+  - Open loans may be renewed once before they become overdue
   - Late fees are calculated when a book is returned past its due date
 """
 
@@ -151,6 +152,42 @@ class LoanService:
 
         # Restore book availability
         loan.book.is_available = True
+
+        db.session.commit()
+        return loan, None
+
+    @classmethod
+    def renew(cls, loan_id: int) -> tuple[Optional[Loan], Optional[str]]:
+        """
+        Extend the due date of an open loan.
+
+        Business rules:
+          - Loan must exist
+          - Loan must still be open
+          - Loan must not already be overdue
+          - Loan may only be renewed MAX_RENEWALS_PER_LOAN times
+
+        Returns:
+            Tuple of (Loan, error_message). error_message is None on success.
+        """
+        loan = cls.get_by_id(loan_id)
+        if not loan:
+            return None, f"Loan with id {loan_id} not found"
+
+        if loan.returned:
+            return None, f"Loan {loan_id} has already been closed (book was previously returned)"
+
+        if loan.is_overdue:
+            return None, f"Loan {loan_id} cannot be renewed because it is already overdue"
+
+        max_renewals = current_app.config["MAX_RENEWALS_PER_LOAN"]
+        if loan.renewal_count >= max_renewals:
+            return None, f"Loan {loan_id} has already reached the renewal limit"
+
+        renewal_period = current_app.config["RENEWAL_PERIOD_DAYS"]
+        loan.due_date = loan.due_date + timedelta(days=renewal_period)
+        loan.renewal_count += 1
+        loan.last_renewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         db.session.commit()
         return loan, None

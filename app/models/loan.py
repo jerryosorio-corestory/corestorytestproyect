@@ -1,7 +1,8 @@
 """
-Loan model — represents a single checkout transaction linking a Member to a Book.
+Loan model — represents a single circulation record linking a Member to a Book.
 
 A loan is open when returned=False and closed once the book is handed back.
+Open loans may be renewed once before they become overdue.
 Late fees accumulate for each day the book is kept beyond the due date.
 """
 
@@ -24,6 +25,8 @@ class Loan(db.Model):
     # Checkout and due dates
     checkout_date = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     due_date = db.Column(db.DateTime, nullable=False)
+    renewal_count = db.Column(db.Integer, default=0, nullable=False)
+    last_renewed_at = db.Column(db.DateTime, nullable=True)
 
     # Return tracking — set when the book is physically returned
     returned = db.Column(db.Boolean, default=False, nullable=False)
@@ -54,4 +57,7 @@ class Loan(db.Model):
 
     def __repr__(self) -> str:
         status = "returned" if self.returned else ("OVERDUE" if self.is_overdue else "open")
-        return f"<Loan id={self.id} member={self.member_id} book={self.book_id} [{status}]>"
+        return (
+            f"<Loan id={self.id} member={self.member_id} "
+            f"book={self.book_id} renewals={self.renewal_count} [{status}]>"
+        )

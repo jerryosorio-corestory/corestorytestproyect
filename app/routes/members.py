@@ -172,6 +172,8 @@ def _loan_to_dict(loan) -> dict:
         "book_title": loan.book.title if loan.book else None,
         "checkout_date": loan.checkout_date.isoformat(),
         "due_date": loan.due_date.isoformat(),
+        "renewal_count": loan.renewal_count,
+        "last_renewed_at": loan.last_renewed_at.isoformat() if loan.last_renewed_at else None,
         "returned": loan.returned,
         "return_date": loan.return_date.isoformat() if loan.return_date else None,
         "late_fee": loan.late_fee,

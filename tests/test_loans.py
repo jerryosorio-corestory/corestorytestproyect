@@ -3,12 +3,15 @@ Unit and integration tests for the Loan resource.
 
 Tests cover:
   - Successful book checkout
+  - Renewing an eligible loan
   - Attempting to borrow when member is suspended
   - Attempting to borrow an already checked-out book
   - Enforcing the concurrent loan limit
   - Returning a book on time (no fee)
   - Listing overdue loans
 """
+
+from datetime import datetime, timedelta, timezone
 
 BOOK_PAYLOAD = {
     "title": "The Pragmatic Programmer",
@@ -149,6 +152,77 @@ def test_return_book_already_returned(client):
     response = client.post(f"/api/loans/{loan_id}/return")  # Second return
     assert response.status_code == 422
     assert "already been closed" in response.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------
+# Renewal
+# ---------------------------------------------------------------------------
+
+def test_renew_loan_success(client):
+    """POST /api/loans/<id>/renew extends the due date for an eligible loan."""
+    member_id, book_id = setup_member_and_book(client)
+    data = checkout(client, member_id, book_id).get_json()
+    loan_id = data["id"]
+    original_due_date = datetime.fromisoformat(data["due_date"])
+
+    response = client.post(f"/api/loans/{loan_id}/renew")
+    assert response.status_code == 200
+    renewed = response.get_json()
+    renewed_due_date = datetime.fromisoformat(renewed["due_date"])
+
+    assert renewed["renewal_count"] == 1
+    assert renewed["last_renewed_at"] is not None
+    assert renewed_due_date == original_due_date + timedelta(days=7)
+    assert "renewed successfully" in renewed["message"]
+
+
+def test_renew_loan_already_returned(client):
+    """Returned loans cannot be renewed."""
+    member_id, book_id = setup_member_and_book(client)
+    loan_id = checkout(client, member_id, book_id).get_json()["id"]
+
+    client.post(f"/api/loans/{loan_id}/return")
+    response = client.post(f"/api/loans/{loan_id}/renew")
+
+    assert response.status_code == 422
+    assert "already been closed" in response.get_json()["error"]
+
+
+def test_renew_loan_overdue(client):
+    """Overdue loans cannot be renewed."""
+    from app import db
+    from app.models.loan import Loan
+
+    member_id, book_id = setup_member_and_book(client)
+    loan_id = checkout(client, member_id, book_id).get_json()["id"]
+
+    with client.application.app_context():
+        loan = db.session.get(Loan, loan_id)
+        loan.due_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        db.session.commit()
+
+    response = client.post(f"/api/loans/{loan_id}/renew")
+    assert response.status_code == 422
+    assert "already overdue" in response.get_json()["error"]
+
+
+def test_renew_loan_exceeds_limit(client):
+    """A loan cannot be renewed more than once."""
+    member_id, book_id = setup_member_and_book(client)
+    loan_id = checkout(client, member_id, book_id).get_json()["id"]
+
+    first = client.post(f"/api/loans/{loan_id}/renew")
+    assert first.status_code == 200
+
+    second = client.post(f"/api/loans/{loan_id}/renew")
+    assert second.status_code == 422
+    assert "renewal limit" in second.get_json()["error"]
+
+
+def test_renew_loan_not_found(client):
+    """Unknown loans return 404 when renewal is requested."""
+    response = client.post("/api/loans/999/renew")
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
