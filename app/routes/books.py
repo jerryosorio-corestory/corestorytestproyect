@@ -24,8 +24,25 @@ def list_books():
     """
     GET /api/books
     Returns all books in the catalogue ordered by title.
+
+    Query params:
+      available (optional) — true | false
+      genre     (optional) — case-insensitive exact genre match
     """
-    books = BookService.get_all()
+    available_param = request.args.get("available")
+    genre_filter = request.args.get("genre", "").strip() or None
+
+    available_filter = None
+    if available_param is not None:
+        normalized = available_param.strip().lower()
+        if normalized not in {"true", "false"}:
+            return jsonify({"error": "Query parameter 'available' must be 'true' or 'false'"}), 400
+        available_filter = normalized == "true"
+
+    books = BookService.filter_books(
+        available=available_filter,
+        genre=genre_filter,
+    )
     result = [_book_to_dict(b) for b in books]
     return jsonify({"books": result, "total": len(result)}), 200
 

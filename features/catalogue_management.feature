@@ -32,6 +32,16 @@ Feature: Book Catalogue Management
     When I search for "Clean"
     Then both books appear in the search results
 
+  Scenario: Filter the catalogue to only available books
+    Given the catalogue contains one available book and one checked-out book
+    When I list books with availability set to "true"
+    Then only the available book appears in the results
+
+  Scenario: Filter the catalogue by genre
+    Given the catalogue contains books in "Technology" and "History"
+    When I list books with genre set to "technology"
+    Then only books in the "Technology" genre appear in the results
+
   Scenario: Delete an available book
     Given the catalogue contains a book that is currently available
     When I delete that book

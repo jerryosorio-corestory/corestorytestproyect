@@ -3,6 +3,7 @@ Unit and integration tests for the Book resource.
 
 Tests cover:
   - Listing an empty catalogue
+  - Filtering the catalogue by availability and genre
   - Creating books with valid and invalid data
   - ISBN uniqueness enforcement
   - Searching the catalogue
@@ -42,6 +43,53 @@ def test_list_books_empty(client):
     data = response.get_json()
     assert data["books"] == []
     assert data["total"] == 0
+
+
+def test_list_books_filter_by_availability(client):
+    """GET /api/books?available=true only returns books not currently on loan."""
+    from tests.test_loans import MEMBER_PAYLOAD
+
+    available_book_id = post_book(client).get_json()["id"]
+    checked_out_payload = {
+        **VALID_BOOK,
+        "title": "Domain-Driven Design",
+        "isbn": "9780321125217",
+    }
+    checked_out_book_id = post_book(client, checked_out_payload).get_json()["id"]
+    member_id = client.post("/api/members", json=MEMBER_PAYLOAD).get_json()["id"]
+    client.post("/api/loans", json={"member_id": member_id, "book_id": checked_out_book_id})
+
+    response = client.get("/api/books?available=true")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["total"] == 1
+    assert data["books"][0]["id"] == available_book_id
+    assert data["books"][0]["is_available"] is True
+
+
+def test_list_books_filter_by_genre(client):
+    """GET /api/books?genre= filters books by genre case-insensitively."""
+    post_book(client, VALID_BOOK)
+    history_book = {
+        **VALID_BOOK,
+        "title": "SPQR",
+        "isbn": "9781631492228",
+        "genre": "History",
+    }
+    post_book(client, history_book)
+
+    response = client.get("/api/books?genre=software engineering")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["total"] == 1
+    assert data["books"][0]["genre"] == "Software Engineering"
+
+
+def test_list_books_invalid_availability_filter(client):
+    """GET /api/books rejects invalid values for the availability filter."""
+    response = client.get("/api/books?available=maybe")
+    assert response.status_code == 400
+    assert "available" in response.get_json()["error"]
 
 
 # ---------------------------------------------------------------------------

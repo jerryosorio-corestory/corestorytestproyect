@@ -18,8 +18,25 @@ class BookService:
 
     @classmethod
     def get_all(cls) -> List[Book]:
-        """Return every book in the catalogue, ordered by title."""
-        return Book.query.order_by(Book.title).all()
+        """Return catalogue books filtered by availability and genre, ordered by title."""
+        return cls.filter_books()
+
+    @classmethod
+    def filter_books(
+        cls,
+        available: Optional[bool] = None,
+        genre: Optional[str] = None,
+    ) -> List[Book]:
+        """Return books matching optional catalogue filters."""
+        query = Book.query
+
+        if available is not None:
+            query = query.filter_by(is_available=available)
+
+        if genre:
+            query = query.filter(Book.genre.isnot(None), Book.genre.ilike(genre))
+
+        return query.order_by(Book.title).all()
 
     @classmethod
     def get_by_id(cls, book_id: int) -> Optional[Book]:
