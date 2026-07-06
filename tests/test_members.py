@@ -5,7 +5,7 @@ Tests cover:
   - Member registration with valid and invalid data
   - Email uniqueness enforcement
   - Profile updates
-  - Fee payment and automatic suspension/reinstatement
+  - Fee payment validation and automatic suspension/reinstatement
 """
 
 VALID_MEMBER = {
@@ -81,17 +81,18 @@ def test_get_member_not_found(client):
 
 def test_pay_fees_clears_balance(client):
     """Paying the full outstanding fee balance resets it to 0.0."""
-    from app import db
-    from app.models.member import Member
-    from flask import current_app
+    from app.services.member_service import MemberService
 
-    # Create member and manually inflate their fees to trigger suspension
     member_id = post_member(client).get_json()["id"]
 
-    # Apply a fee via the internal service to simulate an overdue return
-    response = client.post(f"/api/members/{member_id}/pay", json={"amount": 0.01})
-    # Paying when balance is already 0 should still succeed
+    with client.application.app_context():
+        MemberService.apply_late_fee(member_id, 5.00)
+
+    response = client.post(f"/api/members/{member_id}/pay", json={"amount": 5.00})
     assert response.status_code == 200
+    member = response.get_json()["member"]
+    assert member["outstanding_fees"] == 0.0
+    assert member["status"] == "active"
 
 
 def test_pay_fees_missing_amount(client):
@@ -106,6 +107,36 @@ def test_pay_fees_negative_amount(client):
     member_id = post_member(client).get_json()["id"]
     response = client.post(f"/api/members/{member_id}/pay", json={"amount": -5.0})
     assert response.status_code == 422
+
+
+def test_pay_fees_overpayment_rejected(client):
+    """POST /api/members/<id>/pay rejects payments above the outstanding balance."""
+    from app.services.member_service import MemberService
+
+    member_id = post_member(client).get_json()["id"]
+
+    with client.application.app_context():
+        MemberService.apply_late_fee(member_id, 3.00)
+
+    response = client.post(f"/api/members/{member_id}/pay", json={"amount": 5.00})
+    assert response.status_code == 422
+    assert "exceeds outstanding balance" in response.get_json()["error"]
+
+
+def test_pay_fees_partial_payment_keeps_remaining_balance(client):
+    """Partial payments reduce the balance without reactivating a suspended member."""
+    from app.services.member_service import MemberService
+
+    member_id = post_member(client).get_json()["id"]
+
+    with client.application.app_context():
+        MemberService.apply_late_fee(member_id, 5.00)
+
+    response = client.post(f"/api/members/{member_id}/pay", json={"amount": 2.00})
+    assert response.status_code == 200
+    member = response.get_json()["member"]
+    assert member["outstanding_fees"] == 3.0
+    assert member["status"] == "suspended"
 
 
 # ---------------------------------------------------------------------------

@@ -36,3 +36,14 @@ Feature: Member Registration
     When Charlie pays 5.00
     Then Charlie's outstanding balance becomes 0.00
     And Charlie's account status is set to active
+
+  Scenario: Overpaying fees is rejected
+    Given a member "Charlie Brown" has 3.00 outstanding fees
+    When Charlie tries to pay 5.00
+    Then the system rejects the request
+    And the error message contains "exceeds outstanding balance"
+
+  Scenario: Filter members by suspended status
+    Given there is one suspended member and one active member
+    When I list members with status set to "suspended"
+    Then only the suspended member appears in the results

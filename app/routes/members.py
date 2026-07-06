@@ -112,6 +112,7 @@ def pay_fees(member_id: int):
 
     Request body (JSON):
       amount (required) — positive float, amount paid in USD
+      Cannot exceed the member's current outstanding balance.
     """
     data = request.get_json()
     if not data or "amount" not in data:

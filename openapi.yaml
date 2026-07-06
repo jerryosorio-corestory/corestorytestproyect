@@ -225,8 +225,19 @@ paths:
     get:
       tags: [Members]
       summary: List all members
-      description: Returns all registered members, ordered by last name.
+      description: |
+        Returns all registered members, ordered by last name.
+        Supports optional filtering by membership status.
       operationId: listMembers
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter members by status
+          schema:
+            type: string
+            enum: [active, suspended, expired]
+          example: suspended
       responses:
         "200":
           description: Successful response
@@ -241,6 +252,8 @@ paths:
                       $ref: "#/components/schemas/Member"
                   total:
                     type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
 
     post:
       tags: [Members]
@@ -322,6 +335,7 @@ paths:
       description: |
         Apply a payment to the member's outstanding late-fee balance.
         The amount must be positive and cannot exceed the current outstanding balance.
+        Paying the full balance reactivates a suspended member.
       operationId: payFees
       requestBody:
         required: true
@@ -337,7 +351,7 @@ paths:
                   minimum: 0.01
                   description: Payment amount in USD
             example:
-              amount: 5.50
+              amount: 5.00
       responses:
         "200":
           description: Payment recorded

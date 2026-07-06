@@ -140,7 +140,10 @@ class MemberService:
         """
         Record a fee payment and, if balance is cleared, reactivate the member.
 
-        Business rule: paying off all outstanding fees resets status to ACTIVE.
+        Business rules:
+          - Payment amount must be positive
+          - Payment amount cannot exceed the outstanding balance
+          - Paying off all outstanding fees resets status to ACTIVE
 
         Returns:
             Tuple of (Member, error_message).  error_message is None on success.
@@ -152,8 +155,13 @@ class MemberService:
         if amount <= 0:
             return None, "Payment amount must be greater than zero"
 
-        # Clamp the balance at zero — overpayment is not refunded
-        member.outstanding_fees = max(0.0, member.outstanding_fees - amount)
+        if amount > member.outstanding_fees:
+            return None, (
+                f"Payment amount ${amount:.2f} exceeds outstanding balance "
+                f"of ${member.outstanding_fees:.2f}"
+            )
+
+        member.outstanding_fees -= amount
 
         # Reinstate borrowing privileges once the balance is cleared
         if member.outstanding_fees == 0.0 and member.status == MemberStatus.SUSPENDED:
